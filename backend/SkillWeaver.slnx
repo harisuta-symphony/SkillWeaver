@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="SkillWeaver.API/SkillWeaver.API.csproj" />
+  <Project Path="SkillWeaver.Application/SkillWeaver.Application.csproj" />
+  <Project Path="SkillWeaver.Domain/SkillWeaver.Domain.csproj" />
+  <Project Path="SkillWeaver.Infrastructure/SkillWeaver.Infrastructure.csproj" />
+</Solution>
