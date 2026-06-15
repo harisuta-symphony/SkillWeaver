@@ -1,0 +1,57 @@
+<h2>New Project Proposal</h2>
+
+@if (error()) {
+  <p class="error">{{ error() }}</p>
+}
+
+<form (ngSubmit)="submit()">
+  <div>
+    <label for="title">Project Title</label>
+    <input id="title" type="text" [(ngModel)]="title" name="title" data-testid="proposal-title" required />
+  </div>
+
+  <div>
+    <label for="description">Description (optional)</label>
+    <textarea id="description" [(ngModel)]="description" name="description" rows="3"></textarea>
+  </div>
+
+  <div>
+    <label for="commitment">Required Commitment (%)</label>
+    <input id="commitment" type="number" [(ngModel)]="requiredCommitmentPercentage" name="commitment"
+      data-testid="commitment-percentage" min="1" max="100" required />
+  </div>
+
+  <h3>Required Skills</h3>
+
+  <div>
+    <select [(ngModel)]="selectedSkillId" name="selectedSkillId">
+      <option [value]="0" disabled>Select a skill</option>
+      @for (skill of availableSkills(); track skill.id) {
+        <option [value]="skill.id">{{ skill.name }}</option>
+      }
+    </select>
+
+    <select [(ngModel)]="selectedProficiency" name="selectedProficiency">
+      @for (p of proficiencies; track p) {
+        <option [value]="p">{{ p }}</option>
+      }
+    </select>
+
+    <button type="button" (click)="addSkill()">Add Skill</button>
+  </div>
+
+  @if (requiredSkills().length > 0) {
+    <ul>
+      @for (skill of requiredSkills(); track skill.skillId) {
+        <li>
+          {{ skill.skillName }} — {{ skill.minimumProficiency }}
+          <button type="button" (click)="removeSkill(skill.skillId)">Remove</button>
+        </li>
+      }
+    </ul>
+  }
+
+  <button type="submit" data-testid="submit-proposal" [disabled]="isSubmitting() || !title.trim() || requiredSkills().length === 0">
+    @if (isSubmitting()) { Submitting... } @else { Assemble Team }
+  </button>
+</form>

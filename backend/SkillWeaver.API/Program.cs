@@ -17,6 +17,9 @@ builder.Services.AddScoped<ISkillRepository, SkillRepository>();
 builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
 builder.Services.AddScoped<IProjectProposalRepository, ProjectProposalRepository>();
 
+// AutoMapper
+builder.Services.AddAutoMapper(cfg => cfg.AddMaps(typeof(SkillWeaver.Application.Mappings.MappingProfile).Assembly));
+
 // Application services
 builder.Services.AddScoped<ISkillService, SkillService>();
 builder.Services.AddScoped<IEmployeeService, EmployeeService>();
@@ -43,6 +46,7 @@ if (app.Environment.IsDevelopment())
 
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<SkillWeaverDbContext>();
+    await db.Database.MigrateAsync();
     await DatabaseSeeder.SeedAsync(db);
 }
 

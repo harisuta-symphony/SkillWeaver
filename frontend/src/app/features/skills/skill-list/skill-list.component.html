@@ -1,0 +1,14 @@
+@if (isLoading()) {
+  <p>Loading skills...</p>
+}
+@if (error()) {
+  <p class="error">{{ error() }}</p>
+}
+@for (skill of skills(); track skill.id) {
+  <div class="skill-card">
+    <h3>{{ skill.name }}</h3>
+    @if (skill.category) {
+      <p>{{ skill.category }}</p>
+    }
+  </div>
+}

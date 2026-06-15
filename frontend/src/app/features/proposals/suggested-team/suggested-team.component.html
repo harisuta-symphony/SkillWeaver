@@ -1,0 +1,32 @@
+@if (isLoading()) {
+  <p>Assembling team...</p>
+}
+@if (error()) {
+  <p class="error">{{ error() }}</p>
+}
+@if (suggestedTeam()) {
+  <h2>Suggested Team for {{ suggestedTeam()!.projectTitle }}</h2>
+  <p>{{ suggestedTeam()!.totalCandidates }} candidate(s) found</p>
+
+  @if (suggestedTeam()!.suggestedMembers.length === 0) {
+    <p>No employees match all the required skills and capacity for this project.</p>
+  }
+
+  @for (member of suggestedTeam()!.suggestedMembers; track member.employeeId) {
+    <div class="member-card">
+      <h3>{{ member.fullName }}</h3>
+      <p>{{ member.email }}</p>
+      @if (member.department) {
+        <p>{{ member.department }}</p>
+      }
+      <p>Available capacity: {{ member.availableCapacity }}%</p>
+      <div>
+        @for (skill of member.matchedSkills; track skill.skillId) {
+          <span>{{ skill.skillName }} ({{ skill.proficiencyLevel }})</span>
+        }
+      </div>
+    </div>
+  }
+
+  <a routerLink="/proposals">Create another proposal</a>
+}
