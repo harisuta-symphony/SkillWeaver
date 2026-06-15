@@ -1,0 +1,30 @@
+- generic [ref=e2]:
+  - navigation [ref=e4]:
+    - link "Employees" [ref=e5] [cursor=pointer]:
+      - /url: /employees
+    - link "Skills" [ref=e6] [cursor=pointer]:
+      - /url: /skills
+    - link "Proposals" [ref=e7] [cursor=pointer]:
+      - /url: /proposals
+  - main [ref=e8]:
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - heading "Alice Chen" [level=3] [ref=e11]
+        - paragraph [ref=e12]: alice.chen@skillweaver.dev
+        - paragraph [ref=e13]: "Available capacity: 80%"
+        - paragraph [ref=e14]: "Skills: 2"
+      - generic [ref=e15]:
+        - heading "Bruno Martins" [level=3] [ref=e16]
+        - paragraph [ref=e17]: bruno.martins@skillweaver.dev
+        - paragraph [ref=e18]: "Available capacity: 40%"
+        - paragraph [ref=e19]: "Skills: 3"
+      - generic [ref=e20]:
+        - heading "Clara Nkosi" [level=3] [ref=e21]
+        - paragraph [ref=e22]: clara.nkosi@skillweaver.dev
+        - paragraph [ref=e23]: "Available capacity: 100%"
+        - paragraph [ref=e24]: "Skills: 3"
+      - generic [ref=e25]:
+        - heading "David Park" [level=3] [ref=e26]
+        - paragraph [ref=e27]: david.park@skillweaver.dev
+        - paragraph [ref=e28]: "Available capacity: 20%"
+        - paragraph [ref=e29]: "Skills: 2"

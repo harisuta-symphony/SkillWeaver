@@ -1556,7 +1556,9 @@ Walk through the complete flow:
 > - **Generator agent:** Reads a `spec.md` and generates the actual TypeScript test code.
 > - **Healer agent:** When a test fails (e.g. a locator broke because the HTML changed), the Healer diagnoses and fixes it automatically.
 >
-> **playwright-cli** is used to generate Page Object Model (POM) scaffolding. POMs encapsulate all locators and actions for a page into a reusable class — tests call POM methods instead of raw selectors, making tests resilient to UI changes.
+> **`@playwright/cli`** (`playwright-cli`) is used to inspect live pages and build Page Object Models. It is NOT the same as `playwright codegen` (which records mouse clicks and generates test scripts). Instead, `playwright-cli` runs a persistent browser daemon and after each command outputs a **snapshot YAML file** — an accessibility tree of the current page with short element refs (e.g. `e21`). Claude Code reads this snapshot to understand the real element structure (roles, labels, test IDs) and writes stable POM locators from it. This approach is token-efficient because the snapshot is compact and structured, unlike a full DOM dump.
+>
+> **Workflow:** `playwright-cli open <url>` → `playwright-cli snapshot` → read `.playwright-cli/*.yml` → extract element info → write POM class.
 
 ---
 
@@ -1661,23 +1663,35 @@ export const testProposal = (skillId: number) => ({
 
 ---
 
-### Task 7.4 — Generate POMs with `playwright-cli`
+### Task 7.4 — Build POMs with `@playwright/cli` snapshots
 
-Use `playwright-cli` to scaffold POM classes by inspecting live pages.
+Use `@playwright/cli` to inspect the live app and extract real element structure for each POM.
 
-**Steps:**
-1. Start both servers (backend + frontend)
-2. Run codegen to discover locators for each page:
+**Step 1 — Install `@playwright/cli` globally (once):**
 ```bash
-cd e2e-tests
-npx playwright codegen http://localhost:4200/employees --output tests/page-objects/pages/EmployeesPage.ts
-npx playwright codegen http://localhost:4200/skills --output tests/page-objects/pages/SkillsPage.ts
-npx playwright codegen http://localhost:4200/proposals --output tests/page-objects/pages/ProposalFormPage.ts
+npm install -g @playwright/cli
 ```
-3. Clean up the generated files — remove auto-recorded actions, keep only locator definitions
-4. Structure each POM as a class with a `constructor(page: Page)` and expose locators as properties
 
-**Example cleaned POM:**
+**Step 2 — Start both servers** (backend on :5047, frontend on :4200).
+
+**Step 3 — For each page, open it and take a snapshot:**
+```bash
+playwright-cli open http://localhost:4200/employees
+playwright-cli snapshot
+# Read the generated .playwright-cli/*.yml — it contains the accessibility tree
+# with element roles, labels, and short refs (e.g. ref=e12)
+
+playwright-cli open http://localhost:4200/skills
+playwright-cli snapshot
+
+playwright-cli open http://localhost:4200/proposals
+playwright-cli snapshot
+```
+
+**Step 4 — Hand the snapshot to Claude Code.**
+Claude reads the YAML, identifies element roles/labels/`data-testid` attributes, and writes each POM class with locators derived from the real accessibility tree — not guessed CSS selectors.
+
+**Step 5 — Claude writes the POM files.** Each POM exposes typed locators and helper methods. Example output for `/employees`:
 
 **File:** `e2e-tests/tests/page-objects/pages/EmployeesPage.ts`
 ```typescript
@@ -1691,7 +1705,7 @@ export class EmployeesPage {
   constructor(page: Page) {
     this.page = page;
     this.employeeCards = page.locator('.employee-card');
-    this.heading = page.locator('h1, h2').first();
+    this.heading = page.locator('h2').first();
   }
 
   async goto() {
@@ -1704,9 +1718,11 @@ export class EmployeesPage {
 }
 ```
 
+> **Why this beats codegen:** `playwright-cli snapshot` gives the accessibility tree — semantic roles and labels — without recording any interactions. The resulting POM locators target roles and `data-testid` attributes rather than brittle CSS paths, so they survive HTML restructuring.
+
 Create similarly: `SkillsPage.ts`, `ProposalFormPage.ts`, `SuggestedTeamPage.ts`, `Navbar.ts`.
 
-**Done when:** All POM files compile; locators reflect real elements in the running app.
+**Done when:** All POM files compile; locators are derived from real snapshot output, not guessed.
 
 ---
 
@@ -2154,7 +2170,7 @@ Common issues and fixes:
 Create `e2e-tests/README.md` with:
 - Total test count by category (API / Integration / E2E)
 - How to run tests locally
-- How to use playwright-cli to regenerate POMs after a UI change: `npx playwright codegen http://localhost:4200/{page}`
+- How to regenerate POMs after a UI change: `playwright-cli open http://localhost:4200/{page}` then `playwright-cli snapshot` — hand the snapshot YAML to Claude Code to rewrite affected locators
 - How to invoke the Healer agent after a failure
 - How to view the HTML report: `npm run report`
 
@@ -2215,8 +2231,9 @@ npm run test:headed                     # watch browser live
 npm run test:ui                         # Playwright UI mode
 npm run report                          # open HTML report
 
-# POM generation
-npx playwright codegen http://localhost:4200/{page}
+# POM inspection (playwright-cli)
+playwright-cli open http://localhost:4200/{page}
+playwright-cli snapshot   # outputs accessibility tree to .playwright-cli/*.yml
 ```
 
 ---

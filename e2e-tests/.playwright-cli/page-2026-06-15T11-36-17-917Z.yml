@@ -1,0 +1,37 @@
+- generic [ref=e2]:
+  - navigation [ref=e4]:
+    - link "Employees" [ref=e5] [cursor=pointer]:
+      - /url: /employees
+    - link "Skills" [ref=e6] [cursor=pointer]:
+      - /url: /skills
+    - link "Proposals" [ref=e7] [cursor=pointer]:
+      - /url: /proposals
+  - main [ref=e8]:
+    - generic [ref=e9]:
+      - heading "New Project Proposal" [level=2] [ref=e10]
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - generic [ref=e13]: Project Title
+          - textbox "Project Title" [ref=e14]
+        - generic [ref=e15]:
+          - generic [ref=e16]: Description (optional)
+          - textbox "Description (optional)" [ref=e17]
+        - generic [ref=e18]:
+          - generic [ref=e19]: Required Commitment (%)
+          - spinbutton "Required Commitment (%)" [ref=e20]: "30"
+        - heading "Required Skills" [level=3] [ref=e21]
+        - generic [ref=e22]:
+          - combobox [ref=e23]:
+            - option "Select a skill" [disabled] [selected]
+            - option "Angular"
+            - option ".NET"
+            - option "PostgreSQL"
+            - option "System Design"
+            - option "React"
+            - option "Docker"
+          - combobox [ref=e24]:
+            - option "Beginner"
+            - option "Intermediate" [selected]
+            - option "Expert"
+          - button "Add Skill" [ref=e25] [cursor=pointer]
+        - button "Assemble Team" [disabled] [ref=e26]

@@ -1,0 +1,10 @@
+- generic [ref=e2]:
+  - navigation [ref=e4]:
+    - link "Employees" [ref=e5] [cursor=pointer]:
+      - /url: /employees
+    - link "Skills" [ref=e6] [cursor=pointer]:
+      - /url: /skills
+    - link "Proposals" [ref=e7] [cursor=pointer]:
+      - /url: /proposals
+  - main [ref=e8]:
+    - paragraph [ref=e10]: Loading employees...

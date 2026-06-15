@@ -1,0 +1,28 @@
+- generic [ref=e2]:
+  - navigation [ref=e4]:
+    - link "Employees" [ref=e5] [cursor=pointer]:
+      - /url: /employees
+    - link "Skills" [ref=e6] [cursor=pointer]:
+      - /url: /skills
+    - link "Proposals" [ref=e7] [cursor=pointer]:
+      - /url: /proposals
+  - main [ref=e8]:
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - heading "Angular" [level=3] [ref=e11]
+        - paragraph [ref=e12]: Frontend
+      - generic [ref=e13]:
+        - heading ".NET" [level=3] [ref=e14]
+        - paragraph [ref=e15]: Backend
+      - generic [ref=e16]:
+        - heading "PostgreSQL" [level=3] [ref=e17]
+        - paragraph [ref=e18]: Database
+      - generic [ref=e19]:
+        - heading "System Design" [level=3] [ref=e20]
+        - paragraph [ref=e21]: Architecture
+      - generic [ref=e22]:
+        - heading "React" [level=3] [ref=e23]
+        - paragraph [ref=e24]: Frontend
+      - generic [ref=e25]:
+        - heading "Docker" [level=3] [ref=e26]
+        - paragraph [ref=e27]: DevOps
