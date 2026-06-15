@@ -1124,7 +1124,7 @@ No extra UI library is required — we will use plain CSS for simplicity. If you
 ```typescript
 export const environment = {
   production: false,
-  apiUrl: 'http://localhost:5000/api'
+  apiUrl: 'http://localhost:5047/api'
 };
 ```
 
@@ -1607,7 +1607,7 @@ export default defineConfig({
 **File:** `e2e-tests/.env` (gitignored)
 ```
 BASE_URL=http://localhost:4200
-API_URL=http://localhost:5000
+API_URL=http://localhost:5047
 ```
 
 **Done when:** `npx playwright test` runs with zero errors (zero tests is fine).
@@ -1621,17 +1621,17 @@ API_URL=http://localhost:5000
 import { APIRequestContext } from '@playwright/test';
 
 export async function createTestEmployee(request: APIRequestContext, data: object) {
-  const res = await request.post('http://localhost:5000/api/employee', { data });
+  const res = await request.post('http://localhost:5047/api/employee', { data });
   return res.json();
 }
 
 export async function createTestProposal(request: APIRequestContext, data: object) {
-  const res = await request.post('http://localhost:5000/api/projectproposal', { data });
+  const res = await request.post('http://localhost:5047/api/projectproposal', { data });
   return res.json();
 }
 
 export async function createTestSkill(request: APIRequestContext, data: object) {
-  const res = await request.post('http://localhost:5000/api/skill', { data });
+  const res = await request.post('http://localhost:5047/api/skill', { data });
   return res.json();
 }
 ```
@@ -1748,243 +1748,264 @@ Create similarly: `SkillsPage.ts`, `ProposalFormPage.ts`, `SuggestedTeamPage.ts`
 ---
 
 ## Phase 8 — API & Integration Tests
-**Estimated time:** 2–3 hours | **Day 6**
+**Estimated time:** 3–4 hours | **Day 6**
 
-> **Using Playwright Agents:**
+> **Playwright Agents workflow — how it works:**
 >
-> Before writing each test file, use the agent workflow:
-> 1. Write a natural-language description of what you want to test (e.g. "Test that POST /api/skill creates a skill and GET /api/skill returns it")
-> 2. **Planner agent** reads your description and produces a spec plan
-> 3. **Generator agent** reads the spec and produces the TypeScript test file
-> 4. **Healer agent** fixes any selector or assertion failures automatically when tests break after a code change
+> Playwright ships three AI agents that cover the full test lifecycle. Run them via your AI tool (Claude Code in this project). Initialize once, then use the three-agent loop for every test area:
 >
-> For API tests, Playwright's `request` fixture (available as `test.use({ ... })`) is used — no browser needed.
+> **Step 0 — Initialize agents (once per project):**
+> ```bash
+> cd e2e-tests
+> npx playwright init-agents --loop=claude
+> ```
+> This writes agent definitions into `.github/` — regenerate whenever Playwright updates.
+>
+> **The three-agent loop (repeat for each test area):**
+>
+> 1. **🎭 Planner** — Tell it what to test in plain English. It explores the API (using the seed test for context), then writes a structured Markdown plan to `e2e-tests/specs/`. You trigger it by describing the scenario: _"Generate a plan for testing the Skills API: list all skills, create a skill, retrieve by ID."_
+>
+> 2. **🎭 Generator** — Point it at the plan file. It reads `specs/<plan>.md`, verifies each assertion against the live API, and writes the final test file to `tests/`. You trigger it by referencing the spec: _"Generate tests from specs/skills-api.md"._
+>
+> 3. **🎭 Healer** — When a test fails (e.g. after an API contract change), tell it the failing test name. It replays the steps, inspects what changed, patches locators/assertions, and re-runs until passing.
+>
+> **File layout produced by agents:**
+> ```
+> .github/                        ← agent definitions (from init-agents, at repo root)
+> e2e-tests/
+>   specs/                        ← Planner output (Markdown plans)
+>     skills-api.md
+>     employees-api.md
+>     proposals-api.md
+>     team-assembly.md
+>     employee-skills.md
+>   tests/
+>     seed.spec.ts                ← YOU write this (API bootstrap)
+>     api/                        ← Generator output
+>       skills.api.spec.ts
+>       employees.api.spec.ts
+>       proposals.api.spec.ts
+>     integration/                ← Generator output
+>       team-assembly.integration.spec.ts
+>       employee-skills.integration.spec.ts
+> ```
+>
+> For API tests, Playwright's `request` fixture is used — no browser is launched.
 
 ---
 
-### Task 8.1 — Write API tests for Skills
+### Task 8.0 — Initialize Playwright agents
 
-**File:** `e2e-tests/tests/api/skills.api.spec.ts`
+**Goal:** Write agent definitions into the root `.github/` directory so Claude Code (invoked from repo root) can find and invoke the Planner, Generator, and Healer agents.
 
-**Tests to implement:**
+**Steps:**
+```bash
+# Run from repo root — NOT from e2e-tests/
+# This puts agent definitions in /.github/ where Claude Code can discover them
+npx playwright init-agents --loop=claude
+```
+
+> **Why root, not `e2e-tests/`:** Claude Code is launched from the repo root, so it discovers agent definitions from the root `.github/` folder. Running `init-agents` inside `e2e-tests/` would place definitions there, where Claude won't find them.
+
+**Done when:** Agent definition files appear in `.claude/agents/` at the repo root (`playwright-test-planner.md`, `playwright-test-generator.md`, `playwright-test-healer.md`). A `seed.spec.ts` is also created at repo root — it will be moved in Task 8.1.
+
+> **Note:** `--loop=claude` places definitions in `.claude/agents/`, not `.github/`. That is correct — Claude Code discovers agents from `.claude/agents/`.
+
+---
+
+### Task 8.1 — Move and fill in the seed test
+
+**Goal:** The Planner agent uses the seed test to understand how the API is initialized, what fixtures are available, and what request context to use. Without it the Planner has no execution template.
+
+**Step 1 — Move it into the correct location:**
+```bash
+mv seed.spec.ts e2e-tests/tests/seed.spec.ts
+```
+
+**Step 2 — Replace its contents:**
+
+**File:** `e2e-tests/tests/seed.spec.ts`
 ```typescript
 import { test, expect } from '@playwright/test';
 
-test.describe('Skills API', () => {
-  test('GET /api/skill returns array', async ({ request }) => {
-    const res = await request.get('http://localhost:5000/api/skill');
-    expect(res.status()).toBe(200);
-    const body = await res.json();
-    expect(Array.isArray(body)).toBe(true);
-  });
+const API = process.env['API_URL'] ?? 'http://localhost:5047';
 
-  test('POST /api/skill creates a new skill', async ({ request }) => {
-    const res = await request.post('http://localhost:5000/api/skill', {
-      data: { name: `Skill_${Date.now()}`, category: 'Test' }
-    });
-    expect(res.status()).toBe(201);
-    const skill = await res.json();
-    expect(skill.id).toBeTruthy();
-    expect(skill.name).toContain('Skill_');
-  });
-
-  test('GET /api/skill/{id} returns correct skill', async ({ request }) => {
-    // Create first, then retrieve
-    const created = await (await request.post('http://localhost:5000/api/skill', {
-      data: { name: `GetTest_${Date.now()}`, category: 'Test' }
-    })).json();
-
-    const res = await request.get(`http://localhost:5000/api/skill/${created.id}`);
-    expect(res.status()).toBe(200);
-    expect((await res.json()).id).toBe(created.id);
-  });
+test('seed — API is reachable', async ({ request }) => {
+  const res = await request.get(`${API}/health`);
+  expect(res.status()).toBe(200);
+  const body = await res.json();
+  expect(body.status).toBe('ok');
 });
 ```
 
-**Done when:** All three skill API tests pass.
+> **Why this matters:** The Planner runs the seed test first to verify the environment is ready, then uses it as a template for the tests it plans. The `API_URL` env var lets CI override the default without touching test code.
+
+**Done when:** `npx playwright test tests/seed.spec.ts` passes.
 
 ---
 
-### Task 8.2 — Write API tests for Employees
+### Task 8.2 — Plan and generate Skills API tests
 
-**File:** `e2e-tests/tests/api/employees.api.spec.ts`
+**Planner prompt (give this to the Planner agent):**
+> "Generate a test plan for the SkillWeaver Skills API at `http://localhost:5047/api/skill`. Cover: GET all skills returns a non-empty array with 200; POST creates a skill and returns 201 with an `id`; GET by ID returns the correct skill. Use the seed test for environment setup."
 
-**Tests to cover:**
-- `GET /api/employee` returns array
-- `POST /api/employee` creates employee with 201
-- `GET /api/employee/{id}` returns correct employee
-- `PATCH /api/employee/{id}/capacity` updates capacity
-- `POST /api/employee/{id}/skills` assigns a skill correctly
+**Planner output:** `e2e-tests/specs/skills-api.md`
+
+**Generator prompt (give this to the Generator agent):**
+> "Generate tests from `specs/skills-api.md`."
+
+**Generator output:** `e2e-tests/tests/api/skills.api.spec.ts`
+
+**Done when:** All three skills API tests pass (`npm run test:api`).
+
+---
+
+### Task 8.3 — Plan and generate Employees API tests
+
+**Planner prompt:**
+> "Generate a test plan for the SkillWeaver Employees API at `http://localhost:5047/api/employee`. Cover: GET all returns array; POST creates with 201; GET by ID returns correct employee; PATCH `/capacity` updates the employee's `capacityPercentage`; POST `/{id}/skills` assigns a skill. Use the seed test for environment setup."
+
+**Planner output:** `e2e-tests/specs/employees-api.md`
+
+**Generator prompt:**
+> "Generate tests from `specs/employees-api.md`."
+
+**Generator output:** `e2e-tests/tests/api/employees.api.spec.ts`
 
 **Done when:** All five employee API tests pass.
 
 ---
 
-### Task 8.3 — Write API tests for Project Proposals
+### Task 8.4 — Plan and generate Project Proposals API tests
 
-**File:** `e2e-tests/tests/api/proposals.api.spec.ts`
+**Planner prompt:**
+> "Generate a test plan for the SkillWeaver Project Proposals API at `http://localhost:5047/api/projectproposal`. Cover: POST creates a proposal with required skills and returns 201; GET by ID returns the full proposal including its skills list; POST with an empty title returns 400 (FluentValidation); GET `/{id}/assemble-team` returns a `SuggestedTeamDto` object with `suggestedMembers` array. Use the seed test for environment setup."
 
-**Tests to cover:**
-- `POST /api/projectproposal` creates proposal with required skills
-- `GET /api/projectproposal/{id}` returns full proposal including skills
-- `POST /api/projectproposal` with empty title returns 400 (validation test)
-- `GET /api/projectproposal/{id}/assemble-team` returns `SuggestedTeamDto` shape
+**Planner output:** `e2e-tests/specs/proposals-api.md`
+
+**Generator prompt:**
+> "Generate tests from `specs/proposals-api.md`."
+
+**Generator output:** `e2e-tests/tests/api/proposals.api.spec.ts`
 
 **Done when:** All four proposal API tests pass.
 
 ---
 
-### Task 8.4 — Write integration test for Team Assembly algorithm
+### Task 8.5 — Plan and generate Team Assembly integration tests
 
-**File:** `e2e-tests/tests/integration/team-assembly.integration.spec.ts`
+**Goal:** Test the core matching algorithm against the real database — no mocks.
 
-**Goal:** Test the core algorithm end-to-end with real data, not mocks.
+**Planner prompt:**
+> "Generate an integration test plan for the SkillWeaver Team Assembly algorithm. Three scenarios:
+> 1. A qualified employee (has the required skill at or above minimum proficiency AND has enough available capacity) must appear in `suggestedMembers`.
+> 2. An overbooked employee (available capacity < required commitment) must NOT appear.
+> 3. An employee whose skill proficiency is below the minimum must NOT appear.
+> Each scenario should create its own isolated skill, employee, and proposal via the API to avoid test pollution. Use `http://localhost:5047` as the base URL."
 
-**Tests to implement:**
+**Planner output:** `e2e-tests/specs/team-assembly.md`
 
-```typescript
-test('qualified employee appears in suggested team', async ({ request }) => {
-  // 1. Create a skill
-  const skill = await createTestSkill(request, { name: `IntSkill_${Date.now()}`, category: 'Test' });
+**Generator prompt:**
+> "Generate tests from `specs/team-assembly.md`."
 
-  // 2. Create an employee with that skill at Expert level, 20% booked (80% available)
-  const employee = await createTestEmployee(request, {
-    firstName: 'Alice', lastName: 'Smith', email: `alice_${Date.now()}@test.com`,
-    capacityPercentage: 20
-  });
-  await request.post(`http://localhost:5000/api/employee/${employee.id}/skills`, {
-    data: { skillId: skill.id, proficiency: 'Expert' }
-  });
+**Generator output:** `e2e-tests/tests/integration/team-assembly.integration.spec.ts`
 
-  // 3. Create a proposal requiring that skill at Intermediate, 30% commitment
-  const proposal = await createTestProposal(request, {
-    title: 'Integration Test Project', requiredCommitmentPercentage: 30,
-    requiredSkills: [{ skillId: skill.id, minimumProficiency: 'Intermediate' }]
-  });
-
-  // 4. Assemble team — Alice should appear (Expert >= Intermediate, 80% >= 30%)
-  const res = await request.get(`http://localhost:5000/api/projectproposal/${proposal.id}/assemble-team`);
-  const team = await res.json();
-  const memberIds = team.suggestedMembers.map((m: any) => m.employeeId);
-  expect(memberIds).toContain(employee.id);
-});
-
-test('overbooked employee does NOT appear in suggested team', async ({ request }) => {
-  // Same setup but employee has 90% capacity (only 10% free, needs 30%)
-  // Expect employee NOT in result
-});
-
-test('skill level mismatch excludes employee', async ({ request }) => {
-  // Employee has Beginner level, proposal needs Expert
-  // Expect employee NOT in result
-});
-```
-
-**Done when:** All three integration tests pass; the algorithm's filtering logic is confirmed correct.
+**Done when:** All three integration tests pass; both exclusion cases are verified negative.
 
 ---
 
-### Task 8.5 — Write integration test for Employee-Skill assignment
+### Task 8.6 — Plan and generate Employee-Skill integration tests
 
-**File:** `e2e-tests/tests/integration/employee-skills.integration.spec.ts`
+**Planner prompt:**
+> "Generate an integration test plan for employee-skill assignment edge cases in SkillWeaver. Cover: assigning the same skill twice to the same employee does not create duplicate rows (second call either succeeds idempotently or returns a conflict); a freshly created employee with no skills assigned returns an empty `skills` array; updating an employee's capacity via PATCH and then re-fetching with GET reflects the new `availableCapacity`. Use `http://localhost:5047` as the base URL."
 
-**Tests to cover:**
-- Assigning the same skill twice returns a conflict or updates gracefully (no duplicate rows)
-- Employee with no skills assigned returns empty skills array
-- Updating capacity changes the employee's `availableCapacity` in subsequent GET responses
+**Planner output:** `e2e-tests/specs/employee-skills.md`
 
-**Done when:** All three tests pass.
+**Generator prompt:**
+> "Generate tests from `specs/employee-skills.md`."
+
+**Generator output:** `e2e-tests/tests/integration/employee-skills.integration.spec.ts`
+
+**Done when:** All three edge-case tests pass.
+
+---
+
+### Task 8.7 — Heal any failing tests
+
+If any generated test fails after initial generation (selector mismatch, wrong status code assumption, timing issue), invoke the Healer:
+
+**Healer prompt:**
+> "Heal the failing test `<test name from the failure output>`."
+
+The Healer replays the failing steps against the live API, inspects the actual response shape, patches the assertion or request body, and re-runs until the test passes.
+
+**Done when:** `npm test` shows zero failures across two consecutive runs.
 
 ---
 
 ## Phase 9 — E2E Journey Tests
 **Estimated time:** 2–3 hours | **Day 6–7**
 
+> **E2E tests use the same Planner → Generator → Healer loop as Phase 8**, but now both `page` (browser) and `request` (API) fixtures are in play. The Planner needs the POMs from Phase 7 as context — reference them in your prompt so it can use their locators. The Generator verifies assertions live in a real browser against the running Angular app.
+>
+> **Key difference from API tests:** The Planner explores the live UI (not just HTTP responses), so both servers must be running (`dotnet run` + `ng serve`) before invoking it.
+
 ---
 
-### Task 9.1 — Write employee management journey
+### Task 9.1 — Plan and generate employee management journey
 
-**File:** `e2e-tests/tests/e2e/employee-management.journey.spec.ts`
+**Both servers must be running** before invoking the Planner.
 
-Use the `EmployeesPage` POM. Test the complete browser journey:
+**Planner prompt:**
+> "Generate an E2E test plan for the employee management journey in SkillWeaver (Angular app at `http://localhost:4200`). Use the `EmployeesPage` POM from `tests/page-objects/pages/EmployeesPage.ts` and the `Navbar` POM from `tests/page-objects/components/Navbar.ts`. Cover: navigating to `/employees` shows a list of employee cards with at least one entry; each card displays the employee's name and available capacity; clicking the Skills nav link navigates to `/skills`. Use the seed test for browser environment setup."
 
-```typescript
-import { test, expect } from '@playwright/test';
-import { EmployeesPage } from '../page-objects/pages/EmployeesPage';
+**Planner output:** `e2e-tests/specs/employee-journey.md`
 
-test.describe('Employee management journey', () => {
-  test('employee list loads and displays capacity', async ({ page }) => {
-    const employeesPage = new EmployeesPage(page);
-    await employeesPage.goto();
-    await expect(page).toHaveURL('/employees');
-    const count = await employeesPage.getEmployeeCount();
-    expect(count).toBeGreaterThan(0);
-  });
+**Generator prompt:**
+> "Generate tests from `specs/employee-journey.md`."
 
-  test('navbar links navigate correctly', async ({ page }) => {
-    await page.goto('/employees');
-    await page.click('a[href*="skills"]');
-    await expect(page).toHaveURL(/skills/);
-  });
-});
-```
+**Generator output:** `e2e-tests/tests/e2e/employee-management.journey.spec.ts`
 
 **Done when:** Both journey tests pass in Chromium.
 
 ---
 
-### Task 9.2 — Write team assembly journey
+### Task 9.2 — Plan and generate the golden-path team assembly journey
 
-**File:** `e2e-tests/tests/e2e/team-assembly.journey.spec.ts`
+**Planner prompt:**
+> "Generate an E2E test plan for the full team assembly journey in SkillWeaver. This is the golden path a manager follows:
+> 1. Seed a skill and a qualified employee via the API (`http://localhost:5047`) before the browser steps.
+> 2. Navigate to `/proposals` and fill in the proposal form (`data-testid='proposal-title'`, `data-testid='commitment-percentage'`), select the seeded skill and a proficiency, and submit.
+> 3. Assert the browser redirects to `/proposals/{id}/team`.
+> 4. Assert the seeded employee's name appears in a `.member-card` element.
+> Use the `ProposalFormPage` POM and `SuggestedTeamPage` POM. Use the seed test for setup."
 
-**The golden path — simulate a manager's full workflow:**
+**Planner output:** `e2e-tests/specs/team-assembly-journey.md`
 
-```typescript
-test('full team assembly journey', async ({ page, request }) => {
-  // Seed data via API first (faster and more reliable than UI form)
-  const skill = await createTestSkill(request, { name: `E2ESkill_${Date.now()}`, category: 'E2E' });
-  const employee = await createTestEmployee(request, {
-    firstName: 'E2E', lastName: 'Tester', email: `e2e_${Date.now()}@test.com`,
-    capacityPercentage: 20
-  });
-  await request.post(`http://localhost:5000/api/employee/${employee.id}/skills`, {
-    data: { skillId: skill.id, proficiency: 'Intermediate' }
-  });
+**Generator prompt:**
+> "Generate tests from `specs/team-assembly-journey.md`."
 
-  // Navigate to proposal form
-  await page.goto('/proposals');
+**Generator output:** `e2e-tests/tests/e2e/team-assembly.journey.spec.ts`
 
-  // Fill the form
-  await page.fill('[data-testid="proposal-title"]', 'E2E Assembly Test');
-  await page.fill('[data-testid="commitment-percentage"]', '30');
-  // Select skill and proficiency ...
-  await page.click('[data-testid="submit-proposal"]');
+> **Prerequisite:** Add `data-testid` attributes to the proposal form HTML elements in Angular before running the Generator — otherwise it will produce brittle CSS selectors. Minimum required: `data-testid="proposal-title"`, `data-testid="commitment-percentage"`, `data-testid="submit-proposal"`.
 
-  // Verify redirect to suggested team page
-  await expect(page).toHaveURL(/proposals\/\d+\/team/);
-
-  // Verify the seeded employee appears
-  await expect(page.locator('.member-card')).toContainText('E2E Tester');
-});
-```
-
-> **Note:** Add `data-testid` attributes to key HTML elements in your Angular templates to make locators stable. Example: `<button data-testid="submit-proposal">Assemble Team</button>`
-
-**Done when:** The golden path E2E test passes end-to-end.
+**Done when:** The golden path E2E test passes end-to-end in a real browser.
 
 ---
 
-### Task 9.3 — Run full test suite and fix failures
+### Task 9.3 — Run full test suite and heal failures
 
 ```bash
 cd e2e-tests
 npm test
 ```
 
-Review the HTML report (`npm run report`). For any failing test:
-1. Check if it's a locator issue (HTML changed) → use Healer agent to regenerate the locator
-2. Check if it's a data issue (database not seeded) → ensure `DatabaseSeeder` runs before tests
-3. Check if it's a timing issue → add `await expect(locator).toBeVisible()` before asserting
+Review the HTML report (`npm run report`). For any failing test, invoke the Healer:
+
+**Healer prompt:**
+> "Heal the failing test `<paste test name from failure output>`."
+
+The Healer replays the failing steps in a live browser, inspects the current DOM/API response, patches the broken locator or assertion, and re-runs until passing. If the functionality itself is broken (not just the test), it marks the test as skipped with a clear comment.
 
 **Done when:** All tests pass consistently across two consecutive `npm test` runs.
 
@@ -2121,7 +2142,7 @@ jobs:
           npm test
         env:
           BASE_URL: http://localhost:4200
-          API_URL: http://localhost:5000
+          API_URL: http://localhost:5047
           CI: true
       - uses: actions/upload-artifact@v4
         if: always()
@@ -2198,7 +2219,7 @@ git push origin main --tags
 | `ConnectionStrings__DefaultConnection` | `appsettings.Development.json` | Yes | PostgreSQL connection string |
 | `AllowedOrigins` | `appsettings.Development.json` | Yes | Angular dev server origin (`http://localhost:4200`) |
 | `BASE_URL` | `e2e-tests/.env` | No | Frontend URL, defaults to `http://localhost:4200` |
-| `API_URL` | `e2e-tests/.env` | No | Backend URL, defaults to `http://localhost:5000` |
+| `API_URL` | `e2e-tests/.env` | No | Backend URL, defaults to `http://localhost:5047` |
 
 ---
 
@@ -2207,7 +2228,7 @@ git push origin main --tags
 ```bash
 # Backend
 cd backend/SkillWeaver/SkillWeaver.API
-dotnet run                              # start API on :5000
+dotnet run                              # start API on :5047
 dotnet build ../SkillWeaver.sln         # build entire solution
 
 # EF Core Migrations
