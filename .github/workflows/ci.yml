@@ -28,14 +28,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
       - name: Restore dependencies
-        run: dotnet restore backend/SkillWeaver/SkillWeaver.sln
+        run: dotnet restore backend/SkillWeaver.slnx
       - name: Build
-        run: dotnet build backend/SkillWeaver/SkillWeaver.sln --no-restore --configuration Release
+        run: dotnet build backend/SkillWeaver.slnx --no-restore --configuration Release
       - name: Apply migrations & run API (background)
         run: |
-          cd backend/SkillWeaver/SkillWeaver.API
+          cd backend/SkillWeaver.API
           cat > appsettings.Development.json << 'EOF'
           {
             "ConnectionStrings": {
@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Install & build
         run: |
           cd frontend
@@ -84,13 +84,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - name: Start backend
         run: |
-          cd backend/SkillWeaver/SkillWeaver.API
+          cd backend/SkillWeaver.API
           cat > appsettings.Development.json << 'EOF'
           {
             "ConnectionStrings": {
