@@ -47,9 +47,22 @@ export class ProposalFormPage {
   }
 
   async addRequiredSkill(skillName: string, proficiency: string) {
+    // Wait for the skill option to appear in the dropdown before selecting it,
+    // since skills are loaded asynchronously via API on page init.
+    await this.page.waitForFunction(
+      (name) => {
+        const selects = document.querySelectorAll('select');
+        const skillSelect = selects[0];
+        if (!skillSelect) return false;
+        return Array.from(skillSelect.options).some(opt => opt.text === name);
+      },
+      skillName
+    );
     await this.skillSelect.selectOption({ label: skillName });
     await this.proficiencySelect.selectOption({ label: proficiency });
     await this.addSkillButton.click();
+    // Wait for the skill to appear in the required skills list
+    await this.page.locator('ul li').first().waitFor({ state: 'visible' });
   }
 
   async getRequiredSkillCount(): Promise<number> {

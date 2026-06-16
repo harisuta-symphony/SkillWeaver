@@ -1958,7 +1958,6 @@ The Healer replays the failing steps against the live API, inspects the actual r
 
 **Planner prompt:**
 > "Generate an E2E test plan for the employee management journey in SkillWeaver (Angular app at `http://localhost:4200`). Use the `EmployeesPage` POM from `tests/page-objects/pages/EmployeesPage.ts` and the `Navbar` POM from `tests/page-objects/components/Navbar.ts`. Cover: navigating to `/employees` shows a list of employee cards with at least one entry; each card displays the employee's name and available capacity; clicking the Skills nav link navigates to `/skills`. Use the seed test for browser environment setup."
-
 **Planner output:** `e2e-tests/specs/employee-journey.md`
 
 **Generator prompt:**
