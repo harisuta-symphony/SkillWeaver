@@ -33,6 +33,8 @@ jobs:
         run: dotnet restore backend/SkillWeaver.slnx
       - name: Build
         run: dotnet build backend/SkillWeaver.slnx --no-restore --configuration Release
+      - name: Install dotnet-ef tool
+        run: dotnet tool install --global dotnet-ef
       - name: Apply migrations & run API (background)
         run: |
           cd backend/SkillWeaver.API
@@ -88,6 +90,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install dotnet-ef tool
+        run: dotnet tool install --global dotnet-ef
       - name: Start backend
         run: |
           cd backend/SkillWeaver.API
