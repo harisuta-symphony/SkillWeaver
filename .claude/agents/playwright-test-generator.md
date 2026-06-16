@@ -20,6 +20,7 @@ application behavior.
 - Immediately after reading the test log, invoke `generator_write_test` with the generated source code
   - File should contain single test
   - File name must be fs-friendly scenario name
+  - Integration tests must be placed under `e2e-tests/tests/integration/` (e.g. `e2e-tests/tests/integration/team-assembly-qualified.spec.ts`)
   - Test must be placed in a describe matching the top-level test plan item
   - Test title must match the scenario name
   - Includes a comment with the step text before each step execution. Do not duplicate comments if step requires
