@@ -41,7 +41,7 @@ You will:
 
 5. **Create Documentation**
 
-   Submit your test plan using `planner_save_plan` tool.
+   Submit your test plan using `planner_save_plan` tool. Always save the plan file inside the `e2e-tests/specs/` directory (e.g. `e2e-tests/specs/<plan-name>.plan.md`). Never save to the project root or a top-level `specs/` folder.
 
 **Quality Standards**:
 - Write steps that are specific enough for any tester to follow
