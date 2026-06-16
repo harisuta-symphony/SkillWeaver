@@ -1,9 +1,9 @@
 {
   "mcpServers": {
     "playwright-test": {
-      "command": "npx",
+      "command": "node",
       "args": [
-        "playwright",
+        "/Users/harisuta/.nvm/versions/node/v24.16.0/lib/node_modules/@playwright/cli/node_modules/playwright/cli.js",
         "run-test-mcp-server",
         "--config",
         "e2e-tests/playwright.config.ts"
