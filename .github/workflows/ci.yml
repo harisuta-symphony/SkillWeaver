@@ -90,6 +90,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Restore backend dependencies
+        run: dotnet restore backend/SkillWeaver.slnx
+      - name: Build backend
+        run: dotnet build backend/SkillWeaver.slnx --no-restore --configuration Release
       - name: Install dotnet-ef tool
         run: dotnet tool install --global dotnet-ef
       - name: Start backend
