@@ -41,7 +41,7 @@ jobs:
           cat > appsettings.Development.json << 'EOF'
           {
             "ConnectionStrings": {
-              "DefaultConnection": "Host=localhost;Port=5432;Database=skillweaver_test;Username=postgres;Password=postgres"
+              "skillweaverdb": "Host=localhost;Port=5432;Database=skillweaver_test;Username=postgres;Password=postgres"
             },
             "AllowedOrigins": ["http://localhost:4200"]
           }
@@ -102,7 +102,7 @@ jobs:
           cat > appsettings.Development.json << 'EOF'
           {
             "ConnectionStrings": {
-              "DefaultConnection": "Host=localhost;Port=5432;Database=skillweaver_test;Username=postgres;Password=postgres"
+              "skillweaverdb": "Host=localhost;Port=5432;Database=skillweaver_test;Username=postgres;Password=postgres"
             },
             "AllowedOrigins": ["http://localhost:4200"]
           }
