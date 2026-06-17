@@ -171,6 +171,8 @@ Phase 7  — Playwright Setup & POMs           [ 0 / 10 ]
 Phase 8  — API & Integration Tests           [ 0 / 10 ]
 Phase 9  — E2E Journey Tests                 [ 0 / 8  ]
 Phase 10 — CI/CD (GitHub Actions)            [ 0 / 5  ]
+Phase 11 — Dockerize the Full Stack          [ 0 / 9  ]
+Phase 12 — .NET Aspire (Local Orchestration) [ 0 / 7  ]
 ```
 
 ---
@@ -2020,135 +2022,7 @@ The Healer replays the failing steps in a live browser, inspects the current DOM
 **File:** `.github/workflows/ci.yml`
 
 ```yaml
-name: SkillWeaver CI
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-
-jobs:
-  backend:
-    name: .NET Build & Test
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: skillweaver_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-      - name: Restore dependencies
-        run: dotnet restore backend/SkillWeaver/SkillWeaver.sln
-      - name: Build
-        run: dotnet build backend/SkillWeaver/SkillWeaver.sln --no-restore --configuration Release
-      - name: Apply migrations & run API (background)
-        run: |
-          cd backend/SkillWeaver/SkillWeaver.API
-          cat > appsettings.Development.json << 'EOF'
-          {
-            "ConnectionStrings": {
-              "DefaultConnection": "Host=localhost;Port=5432;Database=skillweaver_test;Username=postgres;Password=postgres"
-            },
-            "AllowedOrigins": ["http://localhost:4200"]
-          }
-          EOF
-          dotnet ef database update --project ../SkillWeaver.Infrastructure --startup-project .
-          dotnet run --no-build &
-          sleep 8
-
-  frontend:
-    name: Angular Build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Install & build
-        run: |
-          cd frontend
-          npm ci
-          npx ng build --configuration production
-
-  e2e:
-    name: Playwright Tests
-    runs-on: ubuntu-latest
-    needs: [backend, frontend]
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: skillweaver_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Start backend
-        run: |
-          cd backend/SkillWeaver/SkillWeaver.API
-          cat > appsettings.Development.json << 'EOF'
-          {
-            "ConnectionStrings": {
-              "DefaultConnection": "Host=localhost;Port=5432;Database=skillweaver_test;Username=postgres;Password=postgres"
-            },
-            "AllowedOrigins": ["http://localhost:4200"]
-          }
-          EOF
-          dotnet ef database update --project ../SkillWeaver.Infrastructure --startup-project .
-          dotnet run &
-          sleep 8
-      - name: Start frontend
-        run: |
-          cd frontend
-          npm ci
-          npx ng serve --configuration development &
-          sleep 15
-      - name: Install Playwright browsers
-        run: |
-          cd e2e-tests
-          npm ci
-          npx playwright install --with-deps chromium
-      - name: Run Playwright tests
-        run: |
-          cd e2e-tests
-          npm test
-        env:
-          BASE_URL: http://localhost:4200
-          API_URL: http://localhost:5047
-          CI: true
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: playwright-report
-          path: e2e-tests/playwright-report/
-          retention-days: 14
 ```
 
 **Done when:** File exists and is committed to `.github/workflows/ci.yml`.
@@ -2208,6 +2082,535 @@ git push origin main --tags
 ```
 
 **Done when:** Clean commit on `main` tagged `v1.0.0`; GitHub Actions shows green on the tagged commit.
+
+---
+
+## Phase 11 — Dockerize the Full Stack
+**Estimated time:** 2–3 hours | **Post-completion**
+
+> **Docker beginner guide — read this before coding.**
+>
+> Docker packages an application and everything it needs to run (runtime, libraries, config) into a portable unit called an **image**. When you run an image, you get a **container** — an isolated process that behaves the same on every machine.
+>
+> **Key concepts you will use here:**
+>
+> **`Dockerfile`:** A recipe for building an image. Each `RUN`, `COPY`, and `CMD` line adds a layer. The file sits next to the code it builds.
+>
+> **Multi-stage builds:** A single Dockerfile can have multiple `FROM` stages. The first stage uses a heavy "build" image (e.g. the .NET SDK or Node with all dev tools). The second stage uses a tiny "runtime" image (e.g. the ASP.NET runtime or nginx) and copies only the compiled output from stage 1. Result: a production image 10× smaller with no build tools in it.
+>
+> **`docker-compose.yml`:** Defines multiple services (containers) and how they connect. Instead of three separate `docker run` commands with all their flags, you describe everything in one file and start it with `docker compose up`. Services find each other by service name — inside the Docker network, `db`, `api`, and `frontend` are valid hostnames.
+>
+> **Volumes:** Named storage that survives container restarts. PostgreSQL stores data in a volume so your database is not wiped every time you restart.
+>
+> **`depends_on` + health checks:** Tells Compose to wait for one service to be healthy before starting another. Without this, the `api` container would crash-loop because PostgreSQL isn't ready yet.
+>
+> **Environment variables:** Containers receive config through environment variables rather than committed config files. In Compose, the `environment:` block injects them at runtime.
+>
+> **The goal:** After this phase, `docker compose up --build` from the repo root starts PostgreSQL, runs migrations, starts the .NET API, builds the Angular app, and serves everything. The app is accessible at `http://localhost:4200`. No local .NET SDK, Node, or Postgres installation required.
+
+---
+
+### Task 11.1 — Add `.dockerignore` files
+
+**Goal:** Tell Docker which files to skip when copying the build context — same idea as `.gitignore`. Without this, `node_modules/`, `bin/`, `obj/`, and the Angular cache are sent to the Docker daemon, making builds 10× slower.
+
+**File:** `backend/.dockerignore`
+```
+**/bin/
+**/obj/
+**/.vs/
+**/appsettings.Development.json
+```
+
+**File:** `frontend/.dockerignore`
+```
+node_modules/
+dist/
+.angular/
+*.env
+```
+
+**Done when:** Both files exist at their respective locations.
+
+---
+
+### Task 11.2 — Write the backend `Dockerfile`
+
+**Goal:** A two-stage build that produces a minimal ASP.NET runtime image with the compiled API inside.
+
+**File:** `backend/Dockerfile`
+
+```dockerfile
+# ── Stage 1: Build ──────────────────────────────────────────────────────────
+# The full .NET SDK image has the compiler, NuGet, and dotnet-ef.
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+# Copy project files first — Docker caches each layer.
+# If only .cs files change (not .csproj), NuGet restore is skipped on rebuild.
+COPY SkillWeaver.slnx .
+COPY SkillWeaver.API/SkillWeaver.API.csproj                           SkillWeaver.API/
+COPY SkillWeaver.Application/SkillWeaver.Application.csproj           SkillWeaver.Application/
+COPY SkillWeaver.Domain/SkillWeaver.Domain.csproj                     SkillWeaver.Domain/
+COPY SkillWeaver.Infrastructure/SkillWeaver.Infrastructure.csproj     SkillWeaver.Infrastructure/
+
+RUN dotnet restore SkillWeaver.slnx
+
+# Copy remaining source and publish a Release build.
+COPY . .
+RUN dotnet publish SkillWeaver.API/SkillWeaver.API.csproj \
+    -c Release -o /app/publish --no-restore
+
+# ── Stage 2: Runtime ─────────────────────────────────────────────────────────
+# The aspnet image is ~100 MB vs ~600 MB for the SDK image.
+# It contains only the ASP.NET runtime — no compiler, no NuGet.
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+
+COPY --from=build /app/publish .
+
+# ASP.NET Core uses port 8080 by default inside containers.
+EXPOSE 8080
+
+ENTRYPOINT ["dotnet", "SkillWeaver.API.dll"]
+```
+
+> **Why copy `.csproj` files before source?** Each `COPY` + `RUN` pair is a cached layer. If you copy everything at once, a single `.cs` change invalidates the `dotnet restore` cache, re-downloading all packages. Copying project files first means restore only re-runs when dependencies actually change.
+
+**Done when:** `docker build -t skillweaver-api ./backend` produces an image. Verify with `docker images`.
+
+---
+
+### Task 11.3 — Write the frontend `Dockerfile`
+
+**Goal:** Build Angular in a Node container, then serve the static output with nginx — a minimal, production-grade web server.
+
+**File:** `frontend/Dockerfile`
+
+```dockerfile
+```
+
+> **Why nginx instead of `ng serve`?** `ng serve` is a development server — it rebuilds on file changes and is not designed for production. nginx is a battle-tested static file server that handles thousands of concurrent connections, compresses responses, and sets cache headers. In Docker (and in production), always serve Angular from nginx.
+
+**Done when:** `docker build -t skillweaver-frontend ./frontend` succeeds.
+
+---
+
+### Task 11.4 — Write the nginx configuration
+
+**Goal:** Configure nginx to serve Angular's SPA correctly and proxy `/api/` to the backend so the browser never triggers a CORS error.
+
+**File:** `frontend/nginx.conf`
+
+```nginx
+server {
+    listen 80;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # SPA routing — if the file does not exist, fall back to index.html.
+    # Without this, refreshing on /proposals/5/team returns a 404 because nginx
+    # looks for a real file at that path. Angular's router handles it client-side.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # API proxy — forward /api/* to the backend container.
+    # "api" resolves to the api service by its Docker Compose service name.
+    # The browser thinks it is talking to the same origin — no CORS header needed.
+    location /api/ {
+        proxy_pass         http://api:8080/api/;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+    }
+}
+```
+
+> **Why proxy through nginx?** If Angular called `http://localhost:5000/api` directly, the browser would block it (different port = different origin = CORS error). By proxying through nginx, all requests appear to come from the same origin (`http://localhost:4200`). CORS is solved at the infrastructure level, not the application level.
+
+**Done when:** File exists at `frontend/nginx.conf`.
+
+---
+
+### Task 11.5 — Verify the Angular production environment uses a relative API path
+
+**Goal:** In the Docker build, Angular is compiled with `--configuration production`, which uses `environment.ts`. It must point to `/api` (relative) so nginx can proxy it.
+
+**File:** `frontend/src/environments/environment.ts`
+
+Ensure it contains:
+```typescript
+export const environment = {
+  production: true,
+  apiUrl: '/api'   // relative — nginx proxies this to the backend container
+};
+```
+
+> **Why relative?** `http://localhost:5000/api` would hit a different port from the browser's perspective, causing a CORS block. `/api` resolves to whatever origin served the page — in Docker that is `http://localhost:4200` — and nginx forwards it internally to the `api` container. The browser never sees the backend port.
+
+**Done when:** `environment.ts` uses `apiUrl: '/api'`.
+
+---
+
+### Task 11.6 — Write `docker-compose.yml`
+
+**Goal:** The single file that describes the entire stack. One command brings it all up in the right order.
+
+**File:** `docker-compose.yml` (repo root)
+
+```yaml
+services:
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: skillweaver
+    ports:
+      - "5432:5432"         # expose for local tools (DBeaver, psql, etc.)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data   # data survives restarts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── .NET API ─────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend     # looks for backend/Dockerfile
+    environment:
+      # Double-underscore is .NET's env-var syntax for nested config keys.
+      # "db" resolves to the db service inside Docker's internal network.
+      ConnectionStrings__DefaultConnection: >
+        Host=db;Port=5432;Database=skillweaver;Username=postgres;Password=postgres;SSL Mode=Disable
+      AllowedOrigins__0: http://localhost:4200
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+    ports:
+      - "5000:8080"          # http://localhost:5000/swagger
+    depends_on:
+      db:
+        condition: service_healthy   # wait for postgres healthcheck to pass
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Angular (nginx) ───────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend    # looks for frontend/Dockerfile
+    ports:
+      - "4200:80"            # http://localhost:4200
+    depends_on:
+      api:
+        condition: service_healthy   # start after API passes its healthcheck
+
+volumes:
+  postgres_data:             # created once on first run, persists across restarts
+```
+
+> **Key things to understand:**
+>
+> - **`services:`** — each key is a container and also a hostname inside Docker's network.
+> - **`build: context:`** — where to find the `Dockerfile` for that service.
+> - **`environment:`** — env vars injected at runtime. `ConnectionStrings__DefaultConnection` is .NET's double-underscore notation for nested keys (`ConnectionStrings` → `DefaultConnection`).
+> - **`depends_on: condition: service_healthy`** — the `api` won't start until `db`'s healthcheck passes. Without this the API crashes immediately because Postgres isn't ready.
+> - **`volumes: postgres_data:`** — named volume. `docker compose down` preserves it. `docker compose down -v` wipes it.
+> - **`ports: "4200:80"`** — `host:container`. Left side is your browser; right side is what the process inside the container listens on.
+
+**Done when:** File exists at repo root.
+
+---
+
+### Task 11.7 — Apply EF Core migrations automatically on startup
+
+**Goal:** The API container needs to apply pending migrations before serving requests. The right approach for Docker is to apply them in code — no SDK or shell script needed in the runtime image.
+
+**File:** `backend/SkillWeaver.API/Program.cs`
+
+Add this block **before** `app.Run()`:
+
+```csharp
+// Apply pending EF Core migrations on startup.
+// The db container is healthy before this runs (depends_on healthcheck),
+// but Migrate() is idempotent — safe to call every boot.
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<SkillWeaverDbContext>();
+    db.Database.Migrate();
+}
+```
+
+> **Why not `dotnet ef database update` in an entrypoint script?** That approach requires the full .NET SDK in the runtime image, bloating it from ~100 MB to ~600 MB. `Database.Migrate()` does the same thing using only the compiled migration classes already in the published output — no SDK needed.
+
+**Done when:** The API container applies migrations automatically on first boot.
+
+---
+
+### Task 11.8 — Build and run the full stack
+
+```bash
+# From the repo root
+docker compose up --build
+
+# Or in detached (background) mode
+docker compose up --build -d
+```
+
+**What to verify:**
+
+1. `docker compose ps` — all three services show `running` or `(healthy)`
+2. `http://localhost:4200` — Angular app loads
+3. `http://localhost:5000/swagger` — Swagger UI for the API
+4. Navigate the app: employees, skills, create a proposal, see the team result
+
+**Useful commands to know:**
+
+```bash
+# Stream logs from all containers
+docker compose logs -f
+
+# Stream logs for just one service
+docker compose logs -f api
+
+# Stop containers (data preserved in the volume)
+docker compose down
+
+# Stop containers AND wipe the database volume (fresh start)
+docker compose down -v
+
+# Rebuild and restart just one service after a code change
+docker compose up --build api
+
+# Open a shell inside the running API container
+docker compose exec api sh
+
+# Connect to PostgreSQL inside the db container
+docker compose exec db psql -U postgres -d skillweaver
+```
+
+**Done when:** `docker compose up --build` succeeds and the app is usable at `http://localhost:4200`.
+
+---
+
+### Task 11.9 — Commit and push
+
+```bash
+git add docker-compose.yml \
+        backend/Dockerfile backend/.dockerignore \
+        frontend/Dockerfile frontend/.dockerignore frontend/nginx.conf \
+        backend/SkillWeaver.API/Program.cs
+
+git commit -m "feat: add Docker Compose setup for full-stack local deployment"
+git push
+```
+
+**Done when:** PR opens, CI passes, Docker files are on `main`.
+
+---
+
+---
+
+## Phase 12 — .NET Aspire (Local Orchestration)
+**Estimated time:** 2–3 hours | **Post-Phase 11**
+
+> **What is .NET Aspire?**
+>
+> .NET Aspire is Microsoft's opinionated framework for building observable, production-ready cloud-native apps. For *local development*, it replaces `docker-compose.yml` with a C# project called an **AppHost** — you describe your services in C# instead of YAML. Aspire then wires them up, injects connection strings automatically, and gives you a live **dashboard** showing logs, distributed traces, metrics, and health checks for every service.
+>
+> **How it differs from Docker Compose:**
+>
+> | | Docker Compose | .NET Aspire |
+> |---|---|---|
+> | Config language | YAML | C# |
+> | Scope | Any stack | .NET-first (works with Node/Python too) |
+> | Dev dashboard | None | Built-in (logs, traces, metrics) |
+> | Service discovery | Manual env vars | Automatic injection |
+> | Production story | Compose files or K8s | Generates K8s manifests / Azure deployment |
+> | Learning curve | Lower | Higher (new concepts) |
+>
+> **The key idea:** Aspire does not replace Docker for production. It replaces `docker-compose.yml` for *local development* and adds observability that would otherwise take hours to set up (OpenTelemetry, Prometheus, etc.). In production you still deploy containers, but Aspire can generate the manifests for you.
+>
+> **Prerequisites:** .NET 9 or 10 SDK, Docker Desktop running (Aspire uses containers internally), Visual Studio 2022 17.9+ or VS Code with the C# Dev Kit.
+
+---
+
+### Task 12.1 — Install the Aspire workload
+
+```bash
+dotnet workload install aspire
+```
+
+Verify:
+```bash
+dotnet workload list
+# Should show: aspire
+```
+
+> **What this installs:** The `aspire` workload adds project templates (`dotnet new aspire-apphost`, `dotnet new aspire-servicedefaults`) and the Aspire hosting NuGet packages to your local SDK.
+
+**Done when:** `dotnet workload list` shows `aspire` as installed.
+
+---
+
+### Task 12.2 — Add the AppHost project
+
+The **AppHost** is the entry point that orchestrates all your services. It is a .NET console app that Aspire runs during development.
+
+```bash
+cd backend/SkillWeaver
+dotnet new aspire-apphost -n SkillWeaver.AppHost
+dotnet sln SkillWeaver.slnx add SkillWeaver.AppHost/SkillWeaver.AppHost.csproj
+```
+
+Add a project reference from AppHost to the API (so it can reference the API project):
+```bash
+dotnet add SkillWeaver.AppHost/SkillWeaver.AppHost.csproj \
+    reference SkillWeaver.API/SkillWeaver.API.csproj
+```
+
+**Done when:** `dotnet build SkillWeaver.slnx` succeeds with the new AppHost project included.
+
+---
+
+### Task 12.3 — Add the ServiceDefaults project
+
+The **ServiceDefaults** project is a shared library that every service references. It configures OpenTelemetry (distributed tracing), health checks, and service discovery in one place — so you don't repeat the setup in every project.
+
+```bash
+dotnet new aspire-servicedefaults -n SkillWeaver.ServiceDefaults
+dotnet sln SkillWeaver.slnx add SkillWeaver.ServiceDefaults/SkillWeaver.ServiceDefaults.csproj
+dotnet add SkillWeaver.API/SkillWeaver.API.csproj \
+    reference SkillWeaver.ServiceDefaults/SkillWeaver.ServiceDefaults.csproj
+```
+
+In `SkillWeaver.API/Program.cs`, add this line **before** `builder.Build()`:
+
+```csharp
+builder.AddServiceDefaults();
+```
+
+And after `app.Build()`, add:
+```csharp
+app.MapDefaultEndpoints(); // exposes /health and /alive endpoints
+```
+
+> **What `AddServiceDefaults()` does in one line:** registers OpenTelemetry traces + metrics, configures the health check endpoints, and enables Aspire's service discovery. Without it, the Aspire dashboard has nothing to display for your service.
+
+**Done when:** `dotnet build SkillWeaver.API/SkillWeaver.API.csproj` succeeds with `ServiceDefaults` referenced.
+
+---
+
+### Task 12.4 — Wire up the AppHost orchestration
+
+**File:** `backend/SkillWeaver/SkillWeaver.AppHost/Program.cs`
+
+Replace the generated content with:
+
+```csharp
+var builder = DistributedApplication.CreateBuilder(args);
+
+// PostgreSQL — Aspire creates a container and injects the connection string automatically.
+// The string "skillweaverdb" becomes the connection name in appsettings.
+var postgres = builder.AddPostgres("postgres")
+                      .WithDataVolume("skillweaver-postgres-data")
+                      .AddDatabase("skillweaverdb");
+
+// .NET API — Aspire starts the project and injects the DB connection string.
+// WithReference() tells Aspire to pass the postgres connection as an env var.
+var api = builder.AddProject<Projects.SkillWeaver_API>("api")
+                 .WithReference(postgres)
+                 .WaitFor(postgres);
+
+// Angular frontend — served via Node/npm during development.
+// Aspire proxies the Angular dev server and adds it to the dashboard.
+builder.AddNpmApp("frontend", "../../frontend")
+       .WithReference(api)
+       .WithHttpEndpoint(port: 4200, env: "PORT")
+       .WaitFor(api);
+
+builder.Build().Run();
+```
+
+> **Key concepts:**
+> - `AddPostgres()` — Aspire pulls the `postgres` Docker image, starts a container, generates a random password, and exposes it as a named resource. You never write a connection string.
+> - `WithReference(postgres)` — Aspire injects `ConnectionStrings__skillweaverdb` into the API's environment automatically. Your `Program.cs` reads it with `GetConnectionString("skillweaverdb")`.
+> - `WaitFor()` — equivalent to `depends_on: condition: service_healthy` in Compose, but expressed in C#.
+> - `AddNpmApp()` — runs `npm start` in the Angular folder. During development, this is the Angular dev server; hot-reload works as normal.
+
+**Done when:** File saved; `dotnet build SkillWeaver.AppHost/SkillWeaver.AppHost.csproj` succeeds.
+
+---
+
+### Task 12.5 — Update the API to read the Aspire-injected connection string
+
+Aspire injects the connection string under the name you gave the database (`skillweaverdb`). Update `Program.cs` to read it:
+
+```csharp
+builder.Services.AddDbContext<SkillWeaverDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("skillweaverdb")));
+```
+
+> If you previously used `"DefaultConnection"`, change just this string. Aspire injects connection strings by the resource name you gave in `AddDatabase("skillweaverdb")`.
+
+**Done when:** API builds and the connection name matches the AppHost resource name.
+
+---
+
+### Task 12.6 — Run the full stack via Aspire
+
+```bash
+cd backend/SkillWeaver/SkillWeaver.AppHost
+dotnet run
+```
+
+Aspire starts all services and opens the **developer dashboard** automatically (usually at `https://localhost:15888`).
+
+**What to explore in the dashboard:**
+- **Resources tab** — shows `postgres`, `api`, `frontend` with their status and endpoint links
+- **Console tab** — streaming logs from every service in one place (click a resource to filter)
+- **Traces tab** — distributed traces showing each HTTP request through the stack (e.g. `GET /api/employee` → EF Core query → response)
+- **Metrics tab** — request rates, error rates, latency histograms — all from OpenTelemetry, zero config
+
+**Verify:**
+1. All three resources show `Running` in the dashboard
+2. `http://localhost:4200` — Angular app loads
+3. `http://localhost:5000/swagger` — Swagger UI (or check the dashboard for the API endpoint)
+4. Make an API call in the app → navigate to Traces → see the full request trace
+
+**Done when:** All three resources are running and a distributed trace is visible in the dashboard after making an API call.
+
+---
+
+### Task 12.7 — Understand Aspire vs Compose: when to use each
+
+This is a conceptual task — no code, just clarity.
+
+| Scenario | Use |
+|---|---|
+| Sharing the project with non-.NET developers | Docker Compose (language-agnostic) |
+| Local .NET development with debugging | Aspire (F5 from VS or `dotnet run` in AppHost) |
+| Production deployment to any host | Docker Compose (or K8s) |
+| Production deployment to Azure | Aspire + `azd` (generates Bicep/ARM from AppHost) |
+| Need live traces and metrics in dev | Aspire (built-in dashboard) |
+| Running in GitHub Actions CI | Docker Compose (simpler, no workload required) |
+
+**Key insight:** Phase 11 (Docker Compose) and Phase 12 (Aspire) are **complementary, not competing**. Keep `docker-compose.yml` for CI and sharing. Use the AppHost for your own daily development loop. The same containerized .NET API and PostgreSQL are used in both — only the orchestration layer differs.
+
+**Done when:** You can articulate why you'd reach for Compose vs Aspire for a given scenario.
+
+---
+
+*End of SkillWeaver Master Implementation Plan — v1.1*
 
 ---
 
@@ -2288,7 +2691,3 @@ SkillWeaver.Domain        (maps entities)
 | DTO | `{Name}Dto.cs` | `SuggestedTeamDto.cs` |
 | Interface | `I{Name}Service.cs` / `I{Name}Repository.cs` | `ITeamAssemblyService.cs` |
 | Enum | `{Name}.cs` (in `Enums/`) | `ProficiencyLevel.cs` |
-
----
-
-*End of SkillWeaver Master Implementation Plan — v1.0*

@@ -40,10 +40,10 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
+app.MapOpenApi();
+
 if (app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
-
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<SkillWeaverDbContext>();
     await db.Database.MigrateAsync();
@@ -55,5 +55,12 @@ app.UseCors("AngularDev");
 app.MapControllers();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<SkillWeaverDbContext>();
+    db.Database.Migrate();
+    await DatabaseSeeder.SeedAsync(db);
+}
 
 app.Run();

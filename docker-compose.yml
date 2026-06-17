@@ -1,0 +1,55 @@
+services:
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: skillweaver
+    ports:
+      - "5432:5432"         # expose for local tools (DBeaver, psql, etc.)
+    volumes:
+      - postgres_data:/var/lib/postgresql/data   # data survives restarts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── .NET API ─────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend     # looks for backend/Dockerfile
+    environment:
+      # Double-underscore is .NET's env-var syntax for nested config keys.
+      # "db" resolves to the db service inside Docker's internal network.
+      ConnectionStrings__DefaultConnection: >
+        Host=db;Port=5432;Database=skillweaver;Username=postgres;Password=postgres;SSL Mode=Disable
+      AllowedOrigins__0: http://localhost:4200
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+    ports:
+      - "5000:8080"          # http://localhost:5000/swagger
+    depends_on:
+      db:
+        condition: service_healthy   # wait for postgres healthcheck to pass
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Angular (nginx) ───────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend    # looks for frontend/Dockerfile
+    ports:
+      - "4200:80"            # http://localhost:4200
+    depends_on:
+      api:
+        condition: service_healthy   # start after API passes its healthcheck
+
+volumes:
+  postgres_data:             # created once on first run, persists across restarts
