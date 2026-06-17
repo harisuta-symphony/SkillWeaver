@@ -18,6 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\SkillWeaver.Application\SkillWeaver.Application.csproj" />
     <ProjectReference Include="..\SkillWeaver.Infrastructure\SkillWeaver.Infrastructure.csproj" />
+    <ProjectReference Include="..\SkillWeaver.ServiceDefaults\SkillWeaver.ServiceDefaults.csproj" />
   </ItemGroup>
 
 </Project>

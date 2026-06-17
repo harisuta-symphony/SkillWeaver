@@ -10,7 +10,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Database
 builder.Services.AddDbContext<SkillWeaverDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("skillweaverdb")));
 
 // Repositories
 builder.Services.AddScoped<ISkillRepository, SkillRepository>();
@@ -38,7 +38,12 @@ builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddOpenApi();
 
+builder.AddServiceDefaults();
+
 var app = builder.Build();
+
+app.MapDefaultEndpoints(); // exposes /health and /alive endpoints
+
 
 app.MapOpenApi();
 
